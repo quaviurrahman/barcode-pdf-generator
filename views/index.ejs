@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode PDF Generator</title>
+    <script>
+        function addImageInput() {
+            const imageInputsDiv = document.getElementById('imageInputs');
+            const inputIndex = imageInputsDiv.children.length;
+            const newInput = document.createElement('div');
+            newInput.innerHTML = `
+                <label for="barcodeImages${inputIndex}">Upload Image for Barcode ${inputIndex + 1}:</label><br>
+                <input type="file" id="barcodeImages${inputIndex}" name="barcodeImages" accept="image/*"><br><br>
+            `;
+            imageInputsDiv.appendChild(newInput);
+        }
+    </script>
+</head>
+<body>
+    <h1>Barcode PDF Generator</h1>
+    <form action="/submit" method="post" enctype="multipart/form-data">
+        <label for="barcodes">Scan or Enter Barcodes (one per line):</label><br>
+        <textarea id="barcodes" name="barcodes" rows="10" cols="50" required oninput="updateImageInputs()"></textarea><br><br>
+
+        <div id="imageInputs"></div>
+
+        <button type="button" onclick="addImageInput()">Add Image Input</button><br><br>
+
+        <button type="submit">Generate PDF</button>
+    </form>
+</body>
+</html>
