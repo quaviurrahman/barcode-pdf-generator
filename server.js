@@ -8,7 +8,6 @@ const bwipjs = require('bwip-js');
 
 // Setup Express app
 const app = express();
-const port = process.env.PORT || 3000;
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.set('view engine', 'ejs');
@@ -147,7 +146,7 @@ function generateBarcodeImage(barcode) {
 }
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
