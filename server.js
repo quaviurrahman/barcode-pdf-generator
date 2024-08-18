@@ -49,10 +49,11 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
 
     // Create PDF document
     const doc = new PDFDocument({ margin: 30 });
-    const pdfPath = `./pdfs/barcodes-${Date.now()}.pdf`;
+    const pdfPath = path.join(__dirname, `pdfs/barcodes-${Date.now()}.pdf`);
+    const writeStream = fs.createWriteStream(pdfPath);
 
     // Begin piping the PDF data to a file
-    doc.pipe(fs.createWriteStream(pdfPath));
+    doc.pipe(writeStream);
 
     // Add title to the PDF
     doc.fontSize(25).text('Barcodes List', {
@@ -94,7 +95,7 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
                 fs.unlinkSync(barcodeImages[index].path);
             }
 
-            doc.moveDown(5);  // Increase space after each image to prevent overlap
+            doc.moveDown(6);  // Increase space after each image to prevent overlap
 
             // Clean up generated barcode image file
             fs.unlinkSync(barcodeImage);
@@ -106,8 +107,8 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
     // Finalize the PDF
     doc.end();
 
-    // Send the generated PDF as a response to the client
-    doc.on('finish', () => {
+    // Ensure the PDF is fully written before attempting to download
+    writeStream.on('finish', () => {
         res.download(pdfPath, 'barcodes.pdf', (err) => {
             if (err) {
                 console.error('Error sending PDF:', err);
@@ -117,6 +118,11 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
                 fs.unlinkSync(pdfPath);
             }
         });
+    });
+
+    writeStream.on('error', (err) => {
+        console.error('Error writing PDF:', err);
+        res.status(500).send('Error generating PDF.');
     });
 });
 
@@ -146,7 +152,7 @@ function generateBarcodeImage(barcode) {
 }
 
 // Start the server
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
