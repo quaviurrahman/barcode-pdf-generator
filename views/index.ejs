@@ -4,50 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Barcode PDF Generator</title>
-    <script>
-        function addImageInput() {
-            const imageInputsDiv = document.getElementById('imageInputs');
-            const stockInputsDiv = document.getElementById('stockInputs');
-            const inputIndex = imageInputsDiv.children.length;
-            const newInput = document.createElement('div');
-            const stockInput = document.createElement('div');
-            
-            newInput.innerHTML = `
-                <label for="barcodeImages${inputIndex}">Upload Image for Barcode ${inputIndex + 1}:</label><br>
-                <input type="file" id="barcodeImages${inputIndex}" name="barcodeImages" accept="image/*"><br><br>
-            `;
-            stockInput.innerHTML = `
-                <label for="stockCount${inputIndex}">Stock Count for Barcode ${inputIndex + 1}:</label><br>
-                <input type="text" id="stockCount${inputIndex}" name="stockCounts"><br><br>
-            `;
-            imageInputsDiv.appendChild(newInput);
-            stockInputsDiv.appendChild(stockInput);
-        }
-    </script>
 </head>
 <body>
     <h1>Barcode PDF Generator</h1>
-    <form action="/submit" method="post" enctype="multipart/form-data">
-        <label for="barcodes">Scan or Enter Barcodes (one per line):</label><br>
-        <textarea id="barcodes" name="barcodes" rows="10" cols="50" required></textarea><br><br>
 
-        <div id="stockInputs"></div>
-        <div id="imageInputs"></div>
+    <!-- Form to input barcode, stock count, and upload image -->
+    <form action="/add-entry" method="post" enctype="multipart/form-data">
+        <label for="barcode">Barcode:</label><br>
+        <input type="text" id="barcode" name="barcode" required><br><br>
 
-        <button type="button" onclick="addImageInput()">Add Image Input and Stock Count</button><br><br>
+        <label for="stockCount">Stock Count:</label><br>
+        <input type="text" id="stockCount" name="stockCount" required><br><br>
 
-        <button type="submit">Generate PDF</button>
+        <label for="barcodeImage">Upload Image (optional):</label><br>
+        <input type="file" id="barcodeImage" name="barcodeImage" accept="image/*"><br><br>
+
+        <button type="submit">Add Entry</button>
     </form>
 
-    <form action="/download-images" method="post" enctype="multipart/form-data">
-        <input type="hidden" id="barcodesForZip" name="barcodes">
-        <button type="submit" onclick="prepareZipDownload()">Download Images as ZIP</button>
-    </form>
+    <!-- Display the list of entries added -->
+    <h2>Entries:</h2>
+    <ul>
+        <% entries.forEach((entry, index) => { %>
+            <li><strong>Barcode:</strong> <%= entry.barcode %>, <strong>Stock Count:</strong> <%= entry.stockCount %></li>
+        <% }); %>
+    </ul>
 
-    <script>
-        function prepareZipDownload() {
-            document.getElementById('barcodesForZip').value = document.getElementById('barcodes').value;
-        }
-    </script>
+    <!-- Button to generate PDF and ZIP -->
+    <form action="/generate" method="post">
+        <button type="submit">Generate PDF and Download Images ZIP</button>
+    </form>
 </body>
 </html>

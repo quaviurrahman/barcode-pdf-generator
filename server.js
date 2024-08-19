@@ -4,6 +4,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
+const session = require('express-session');
 const bwipjs = require('bwip-js');
 const archiver = require('archiver');
 
@@ -11,6 +12,7 @@ const archiver = require('archiver');
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+app.use(session({ secret: 'barcodeSecret', resave: false, saveUninitialized: true }));
 app.set('view engine', 'ejs');
 
 // Setup storage for multer
@@ -19,7 +21,9 @@ const storage = multer.diskStorage({
         cb(null, 'uploads/');
     },
     filename: function (req, file, cb) {
-        cb(null, file.fieldname + '-' + Date.now() + path.extname(file.originalname));
+        const barcode = req.body.barcode.trim(); // Get the barcode from the form
+        const ext = path.extname(file.originalname); // Get the original file extension
+        cb(null, `${barcode}${ext}`); // Set the filename as the barcode text with the original extension
     }
 });
 
@@ -40,13 +44,29 @@ if (!fs.existsSync('uploads')) {
 
 // Homepage route
 app.get('/', (req, res) => {
-    res.render('index');
+    if (!req.session.entries) {
+        req.session.entries = [];
+    }
+    res.render('index', { entries: req.session.entries });
 });
 
-// Endpoint to handle barcode submission and generate PDF
-app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
-    const { barcodes, stockCounts } = req.body;
-    const barcodeImages = req.files;
+// Endpoint to handle barcode, stock count, and image submission
+app.post('/add-entry', upload.single('barcodeImage'), (req, res) => {
+    const { barcode, stockCount } = req.body;
+    const barcodeImage = req.file ? req.file.path : null;
+
+    req.session.entries.push({
+        barcode,
+        stockCount,
+        barcodeImage
+    });
+
+    res.redirect('/');
+});
+
+// Endpoint to end input and generate PDF and ZIP
+app.post('/generate', async (req, res) => {
+    const entries = req.session.entries;
 
     // Create PDF document
     const doc = new PDFDocument({ margin: 30 });
@@ -61,68 +81,60 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
         align: 'center'
     });
 
-    // Split barcodes and stock counts by line and filter out empty lines
-    const barcodeList = barcodes.split('\n').filter(b => b.trim() !== '');
-    const stockCountList = stockCounts.split('\n').filter(c => c.trim() !== '');
+    const zipFilePath = path.join(__dirname, `pdfs/barcode-images-${Date.now()}.zip`);
+    const output = fs.createWriteStream(zipFilePath);
+    const archive = archiver('zip', {
+        zlib: { level: 9 }
+    });
 
-    for (const [index, barcode] of barcodeList.entries()) {
+    output.on('close', () => {
+        console.log(`ZIP file created with ${archive.pointer()} total bytes`);
+    });
+
+    archive.on('error', (err) => {
+        throw err;
+    });
+
+    archive.pipe(output);
+
+    for (const entry of entries) {
         try {
-            const barcodeImage = await generateBarcodeImage(barcode.trim(), barcode.trim());
-            const stockCount = stockCountList[index] || 'N/A';
+            const barcodeImage = await generateBarcodeImage(entry.barcode.trim(), entry.barcode.trim());
+            const stockCount = entry.stockCount || 'N/A';
 
             doc.moveDown(1);  // Move down before adding each new barcode
 
             // Display barcode text and stock count
-            doc.fontSize(14).text(`Barcode: ${barcode}\nStock Count: ${stockCount}`, {
+            doc.fontSize(14).text(`Barcode: ${entry.barcode}\nStock Count: ${stockCount}`, {
                 align: 'left',
                 continued: true
             });
 
-            // Display barcode image on the right-hand side
+            // Display barcode image on the left-hand side
             const imageY = doc.y;
-            doc.image(barcodeImage, doc.page.width - 250, imageY, {
-                fit: [200, 100],
-                align: 'right',
-                valign: 'center'
-            });
+            doc.image(barcodeImage, { fit: [200, 100], align: 'left', valign: 'center' });
 
             // Check if there is an uploaded image for this barcode
-            if (barcodeImages[index]) {
-                doc.moveDown(1);
-                doc.fontSize(14).text('Associated Image:', {
-                    align: 'left',
-                });
-
-                const userImagePath = path.join(__dirname, 'uploads', `${barcode.trim()}-user${path.extname(barcodeImages[index].originalname)}`);
-                fs.renameSync(barcodeImages[index].path, userImagePath);
-
-                doc.image(userImagePath, doc.page.width - 250, doc.y, {
-                    fit: [200, 150],
-                    align: 'right',
-                    valign: 'center'
-                });
+            if (entry.barcodeImage) {
+                const rightImageX = doc.page.width - 230;
+                doc.image(entry.barcodeImage, rightImageX, imageY, { fit: [200, 150], align: 'right', valign: 'center' });
+                // Add only the uploaded images to the ZIP file
+                archive.file(entry.barcodeImage, { name: path.basename(entry.barcodeImage) });
             }
 
-            doc.moveDown(3);  // Increase space after each image to prevent overlap
+            doc.moveDown(3);  // Increase space after each set of images to prevent overlap
         } catch (error) {
-            console.error(`Error generating barcode for ${barcode}:`, error);
+            console.error(`Error generating barcode for ${entry.barcode}:`, error);
         }
     }
 
-    // Finalize the PDF
     doc.end();
+    archive.finalize();
 
-    // Ensure the PDF is fully written before attempting to download
+    // Ensure the PDF is fully written before allowing download
     writeStream.on('finish', () => {
-        res.download(pdfPath, 'barcodes.pdf', (err) => {
-            if (err) {
-                console.error('Error sending PDF:', err);
-                res.status(500).send('Error generating PDF.');
-            } else {
-                // Optionally clean up the generated PDF file
-                fs.unlinkSync(pdfPath);
-            }
-        });
+        res.render('download', { pdfPath: `/pdfs/${path.basename(pdfPath)}`, zipPath: `/pdfs/${path.basename(zipFilePath)}` });
+        req.session.entries = []; // Clear session entries after generating files
     });
 
     writeStream.on('error', (err) => {
@@ -155,6 +167,9 @@ function generateBarcodeImage(barcode, filename) {
         });
     });
 }
+
+// Serve PDF and ZIP files statically
+app.use('/pdfs', express.static(path.join(__dirname, 'pdfs')));
 
 // Start the server
 const PORT = process.env.PORT || 3000;
