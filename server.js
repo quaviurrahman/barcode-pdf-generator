@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
 const bwipjs = require('bwip-js');
+const archiver = require('archiver');
 
 // Setup Express app
 const app = express();
@@ -42,9 +43,9 @@ app.get('/', (req, res) => {
     res.render('index');
 });
 
-// Endpoint to handle barcode submission
+// Endpoint to handle barcode submission and generate PDF
 app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
-    const { barcodes } = req.body;
+    const { barcodes, stockCounts } = req.body;
     const barcodeImages = req.files;
 
     // Create PDF document
@@ -60,45 +61,49 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
         align: 'center'
     });
 
-    // Split barcodes by line and filter out empty lines
+    // Split barcodes and stock counts by line and filter out empty lines
     const barcodeList = barcodes.split('\n').filter(b => b.trim() !== '');
+    const stockCountList = stockCounts.split('\n').filter(c => c.trim() !== '');
 
     for (const [index, barcode] of barcodeList.entries()) {
         try {
-            const barcodeImage = await generateBarcodeImage(barcode.trim());
+            const barcodeImage = await generateBarcodeImage(barcode.trim(), barcode.trim());
+            const stockCount = stockCountList[index] || 'N/A';
 
-            doc.moveDown(5);  // Move down before adding each new barcode
-            doc.fontSize(14).text(`Barcode: ${barcode}`, {
+            doc.moveDown(1);  // Move down before adding each new barcode
+
+            // Display barcode text and stock count
+            doc.fontSize(14).text(`Barcode: ${barcode}\nStock Count: ${stockCount}`, {
                 align: 'left',
+                continued: true
             });
 
-            doc.image(barcodeImage, {
-                fit: [250, 100],
-                align: 'left',
+            // Display barcode image on the right-hand side
+            const imageY = doc.y;
+            doc.image(barcodeImage, doc.page.width - 250, imageY, {
+                fit: [200, 100],
+                align: 'right',
                 valign: 'center'
             });
 
             // Check if there is an uploaded image for this barcode
             if (barcodeImages[index]) {
-                doc.moveDown(6);
+                doc.moveDown(1);
                 doc.fontSize(14).text('Associated Image:', {
                     align: 'left',
                 });
 
-                doc.image(barcodeImages[index].path, {
-                    fit: [250, 150],
-                    align: 'left',
+                const userImagePath = path.join(__dirname, 'uploads', `${barcode.trim()}-user${path.extname(barcodeImages[index].originalname)}`);
+                fs.renameSync(barcodeImages[index].path, userImagePath);
+
+                doc.image(userImagePath, doc.page.width - 250, doc.y, {
+                    fit: [200, 150],
+                    align: 'right',
                     valign: 'center'
                 });
-
-                // Clean up the uploaded image file after use
-                fs.unlinkSync(barcodeImages[index].path);
             }
 
-            doc.moveDown(6);  // Increase space after each image to prevent overlap
-
-            // Clean up generated barcode image file
-            fs.unlinkSync(barcodeImage);
+            doc.moveDown(3);  // Increase space after each image to prevent overlap
         } catch (error) {
             console.error(`Error generating barcode for ${barcode}:`, error);
         }
@@ -126,8 +131,8 @@ app.post('/submit', upload.array('barcodeImages'), async (req, res) => {
     });
 });
 
-// Function to generate barcode image
-function generateBarcodeImage(barcode) {
+// Function to generate barcode image and save it with a specific name
+function generateBarcodeImage(barcode, filename) {
     return new Promise((resolve, reject) => {
         bwipjs.toBuffer({
             bcid: 'code128',       // Barcode type
@@ -140,7 +145,7 @@ function generateBarcodeImage(barcode) {
             if (err) {
                 return reject(err);
             }
-            const filePath = path.join(__dirname, 'uploads', `${barcode}.png`);
+            const filePath = path.join(__dirname, 'uploads', `${filename}.png`);
             fs.writeFile(filePath, png, (err) => {
                 if (err) {
                     return reject(err);

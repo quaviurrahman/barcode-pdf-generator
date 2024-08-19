@@ -7,13 +7,21 @@
     <script>
         function addImageInput() {
             const imageInputsDiv = document.getElementById('imageInputs');
+            const stockInputsDiv = document.getElementById('stockInputs');
             const inputIndex = imageInputsDiv.children.length;
             const newInput = document.createElement('div');
+            const stockInput = document.createElement('div');
+            
             newInput.innerHTML = `
                 <label for="barcodeImages${inputIndex}">Upload Image for Barcode ${inputIndex + 1}:</label><br>
                 <input type="file" id="barcodeImages${inputIndex}" name="barcodeImages" accept="image/*"><br><br>
             `;
+            stockInput.innerHTML = `
+                <label for="stockCount${inputIndex}">Stock Count for Barcode ${inputIndex + 1}:</label><br>
+                <input type="text" id="stockCount${inputIndex}" name="stockCounts"><br><br>
+            `;
             imageInputsDiv.appendChild(newInput);
+            stockInputsDiv.appendChild(stockInput);
         }
     </script>
 </head>
@@ -21,13 +29,25 @@
     <h1>Barcode PDF Generator</h1>
     <form action="/submit" method="post" enctype="multipart/form-data">
         <label for="barcodes">Scan or Enter Barcodes (one per line):</label><br>
-        <textarea id="barcodes" name="barcodes" rows="10" cols="50" required oninput="updateImageInputs()"></textarea><br><br>
+        <textarea id="barcodes" name="barcodes" rows="10" cols="50" required></textarea><br><br>
 
+        <div id="stockInputs"></div>
         <div id="imageInputs"></div>
 
-        <button type="button" onclick="addImageInput()">Add Image Input</button><br><br>
+        <button type="button" onclick="addImageInput()">Add Image Input and Stock Count</button><br><br>
 
         <button type="submit">Generate PDF</button>
     </form>
+
+    <form action="/download-images" method="post" enctype="multipart/form-data">
+        <input type="hidden" id="barcodesForZip" name="barcodes">
+        <button type="submit" onclick="prepareZipDownload()">Download Images as ZIP</button>
+    </form>
+
+    <script>
+        function prepareZipDownload() {
+            document.getElementById('barcodesForZip').value = document.getElementById('barcodes').value;
+        }
+    </script>
 </body>
 </html>
